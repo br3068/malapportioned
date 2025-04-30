@@ -1,0 +1,564 @@
+library(tidyverse)
+
+vy1 <- read_csv("Vic_GDP_Con.csv")
+
+vy2 <- read_csv("Vic_GDP_Con2.csv")
+
+# Sectoral explanations
+vyly <- vy1 %>%
+  select(Year, y = GDP)
+
+
+vyl1<- vy1 %>%
+  mutate_if(is.character, as.numeric) %>%
+  pivot_longer(-Year, names_to = 'Sector', values_to = 'Val') %>%
+  filter(Sector != "GDP", Sector != "GDP PC", Sector != "Population") %>%
+  inner_join(vyly, by = "Year") %>%
+  mutate(P= Val/y) 
+  
+
+vyl2<- vy2 %>%
+  mutate_if(is.character, as.numeric) %>%
+  pivot_longer(-Year, names_to = 'Sector', values_to = 'Val') %>%
+  filter(Sector != "GDP", Sector != "GDP PC") %>%
+  inner_join(vyly, by = "Year") %>%
+  mutate(P= Val/y)
+
+
+vyly <- vy1 %>%
+  select(Year, y = GDP)
+
+vyl <- vyl1 %>%
+  group_by(Year) %>%
+  summarise(sum(P))
+
+
+vyl_gr <- vyl1 %>% 
+  filter(Sector == "Pastoral" | 
+           Sector == "Agric" | 
+           Sector == "Mine" |
+           Sector == "Dairy"|
+           Sector == "Manu"|
+           Sector == "Const"|
+           Sector == "Govt."|
+           Sector == "Finance"|
+           Sector == "Distribution"|
+           Sector == "House Rents",
+         Year >= 1929 & Year <= 1940) 
+
+vyl_grg <- vyl1 %>% 
+  filter(Sector == "Govt.",
+  Year >= 1925 & Year <= 1950)
+
+ggplot(vyl_gr)+aes(x=Year, y = P)+
+  facet_wrap(~Sector)+
+  geom_line()+
+  geom_smooth()+
+  scale_x_continuous(n.breaks = 10)
+
+
+ggplot(vyl_gr)+aes(x=Year, y = Val)+
+  facet_wrap(~Sector)+
+  geom_line()+
+  geom_smooth()+
+  scale_x_continuous(n.breaks = 10)+
+  theme_ben()
+
+
+
+# Sectoral
+# First set
+vyp2 <- vy1 %>% 
+  mutate_if(is.character, as.numeric) %>% 
+  mutate(
+    AGRIR = (Pastoral + Agric+Dairy)/ (Manu +Const+Finance+Distribution+`House Rents`)
+  ) %>% 
+  select(Year, AGRIR) 
+
+
+# second set
+vyp21 <- vy2 %>%
+  mutate_if(is.character, as.numeric) %>% 
+  mutate(
+    AGRIR = (Agri)/ (Manufacturing+Construction+Retail+`Finance and Property`)
+  ) %>% 
+  select(Year, AGRIR) 
+
+
+
+vyp2c <- vyp2 %>% 
+  bind_rows(vyp21)
+
+m <- loess(AGRIR~Year, data = vyp2c)
+
+aloess <- as.tibble(predict(m, vyp2c))
+vyp2cl <- vyp2c %>% 
+  bind_cols(aloess) 
+  # filter(Year < 1950)
+
+
+
+
+
+ggplot(vyp2cl)+aes(x=Year, y = AGRIR)+
+  geom_line()+
+  # geom_smooth()+
+  scale_x_continuous(n.breaks = 24) 
+
+
+ggplot(vyp2cl)+aes(x=Year, y = value)+
+  geom_line()+
+  # geom_smooth()+
+  scale_x_continuous(n.breaks = 24) 
+
+write_rds(vyp2cl,"vyp2cl.rds")
+
+
+# per capita
+ipc <- vy1 %>% 
+  select(Year, GDP, Population) %>% 
+  mutate(IPC = GDP*1000/Population)
+
+ggplot(ipc)+aes(x= Year, y = IPC)+
+  geom_line()+
+  geom_smooth()
+
+
+
+ # 1940s
+vyl_gr2 <- vy1 %>% 
+         filter(Year >= 1938 & Year <= 1955)
+
+
+library(tidyverse)
+library(rio)
+library(plotly)
+library(sf)
+
+library(tidyverse)
+library(rvest)
+
+
+
+
+
+# Early VLA
+
+enroll2 <- function(y){
+  x <- read.delim(paste0("http://psephos.adam-carr.net/countries/a/australia/states/vic/historic/",y,"assembly.txt"))
+  
+  x <- as.vector(x)
+  x <- str_replace_all(x, "(2 members)", "")
+  x <- str_replace_all(x, "BY-ELECTIONS(,?.*)","")
+  
+  xl1<- str_extract_all(x, regex("(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+enrolled"))
+  
+  
+  xl2 <- xl1[[1]]
+  
+  
+  xl3 <- str_replace_all(xl2, regex("\\W+"), " ")
+  
+  xl4 <- str_replace_all(xl3, " enrolled", "")
+  
+  n <- extract_numeric(xl4)
+  
+  xl5 <- str_trim(gsub("[[:digit:]]", "", xl4))
+  
+  xlt1 <- as_tibble(xl5,.name_repair = ~ "DISTRICT")
+  
+  xlt2 <- as_tibble(n,.name_repair = ~"EN") 
+  
+  
+  t <- xlt1 %>% 
+    bind_cols(xlt2) %>%
+    mutate(YEAR = y)
+  
+  write_rds(t, paste("enrole/",y,".rds"))
+}
+
+
+z2 <- as.list(c(1859, 1874, 1877, 1883, 1886, 1889, 1892, 1894, 1897, 1900, 1902, 1904, 1907))
+
+lapply(z2,enroll2)
+
+
+
+
+
+rds_combo3 <- list.files( path = "enrole/", pattern = "*.rds", full.names = TRUE ) %>%
+  map_dfr(readRDS)
+
+rds_combo3 <- rds_combo3 %>% 
+  na.omit() %>% 
+  mutate(DISTRICT = str_remove_all(DISTRICT, "actions")) %>% 
+  mutate(DISTRICT = str_remove_all(DISTRICT, "vote ")) %>%
+  mutate(DISTRICT = str_remove_all(DISTRICT, "below ")) %>% 
+  mutate(DISTRICT = str_remove_all(DISTRICT, "against ")) %>% 
+  filter(DISTRICT != "members") %>% 
+  mutate(DISTRICT = case_when(
+    DISTRICT == "" ~ "EAST BOURKE BOROUGHS",
+    DISTRICT == "AND FOLLETT" ~ "DUNDAS AND FOLLETT",
+    DISTRICT == "AND MORNINGTON" ~ "EVELYN AND MORNINGTON",
+    DISTRICT == "AND MALDON" ~ "CASTLEMAINE AND MALDON",
+    DISTRICT == "AND ARARAT" ~ "STAWELL AND ARARAT",
+    DISTRICT == "AND DALHOUSIE"~"BULLA AND DALHOUSIE",
+    DISTRICT == "AND KYNETON" ~ "CASTLEMAINE AND KYNETON",
+    DISTRICT == "AND BORUNG" ~ "KARA KARA AND BORUNG",
+    DISTRICT == "AND EAGLEHAWK" ~ "KORONG AND EAGLEHAWK",
+    DISTRICT == "AND DAYLESFORD" ~ "MARYBOROUGH AND DAYLESFORD",
+    DISTRICT == "AND GLENELG" ~ "PORT FAIRY AND GLENELG",
+    DISTRICT == "AND OVENS" ~ "WANGARATTA AND OVENS",
+    DISTRICT == "AND GRENVILLE" ~ "WARRENHEIP AND GRENVILLE",
+    DISTRICT == "Commission GREENSBOROUGH" ~ "GREENSBOROUGH",
+    DISTRICT == "AND YARRAWONGA" ~ "BENALLA AND YARRAWONGA",
+    DISTRICT == "AND ALLANDALE" ~ "CLUNES AND ALLANDALE",
+    DISTRICT == "AND BERWICK" ~ "DANDENONG AND BERWICK",
+    DISTRICT == "AND FLEMINGTON" ~ "ESSENDON AND FLEMINGTON",
+    DISTRICT == "AND LANCEFIELD" ~ "KILMORE, DALHOUSIE AND LANCEFIELD",
+    DISTRICT == "AND NATHALIA" ~ "NUMURKAH AND NATHALIA",
+    DISTRICT == "AND HAMPDEN" ~ "RIPON AND HAMPDEN",
+    DISTRICT == "AND EUROA" ~ "SHEPPARTON AND EUROA",
+    DISTRICT == "AND AVOCA" ~ "TALBOT AND AVOCA",
+    DISTRICT == "AND HEYTESBURY" ~ "VILLIERS AND HEYTESBURY",
+    DISTRICT == "AND RUTHERGLEN" ~"WANGARATTA AND RUTHERGLEN",
+    DISTRICT == "WEST" & YEAR <= 1902 ~ "BALLARAT WEST",
+    DISTRICT == "EAST" & YEAR <= 1902 ~ "MELBOURNE EAST",
+    DISTRICT == "BOROUGHS" ~ "EAST BOURKE BOROUGHS",
+    TRUE ~ DISTRICT)) %>%
+  mutate(DISTRICT = str_trim(DISTRICT)) %>% 
+  filter(DISTRICT != "") %>% 
+  na.omit() %>% 
+  group_by(YEAR,DISTRICT) %>% 
+  mutate(id = row_number()) %>% 
+  filter(id == 1) %>% 
+  select(-id)
+
+
+
+
+E1856 <- read_csv("early/n1856.csv")
+E1859 <- read_csv("early/N1859B.csv")
+E1877 <- read_csv("early/g1877b.csv")
+E1889 <- read_csv("early/j1889.csv")
+
+
+Erol <- E1856 %>% 
+  bind_rows(E1856,E1859, E1877,E1889) %>% 
+  mutate(categ = case_when(
+    CAT == "U" ~ "Metro",
+    CAT == "C" ~ "Rural",
+    CAT == "M" ~ "Urban",
+    CAT == "N" ~ "Rural"
+  ))
+
+
+
+
+
+
+
+# Obtain data from scraped sources 
+district <- read_csv("enrollment.csv")
+
+elect2 <- read_csv("elect_cat.csv") %>% 
+  mutate(DISTRICT = toupper(DISTRICT)) %>% 
+  select(-YEAR) %>% 
+  mutate(DISTRICT = case_when(
+    DISTRICT == "ALLANDALE" ~ "ALLENDALE",
+    TRUE ~ DISTRICT
+  ))
+
+# 1889-03
+district_1 <- district %>%
+  mutate(DISTRICT = case_when(
+    DISTRICT == "SWAN HILL" ~ "DONALD AND SWAN HILL",
+    DISTRICT == "WANGARATTA AND RUTHERGLE" ~ "WANGARATTA AND RUTHERGLEN",
+    TRUE ~ DISTRICT)) %>%
+  filter(YEAR >= 1889, YEAR <= 1903) %>%
+  mutate(SEATS = case_when(
+    DISTRICT == "RODNEY"~ 2,
+    DISTRICT == "GRENVILLE"~ 2,
+    DISTRICT == "SANDHURST"~ 2,
+    DISTRICT == "CASTLEMAINE"~ 2,
+    DISTRICT == "EAST BOURKE BOROUGHS"~ 2,
+    DISTRICT == "COLLINGWOOD"~ 2,
+    DISTRICT == "RICHMOND"~ 2,
+    DISTRICT == "FITZROY"~ 2,
+    DISTRICT == "BALLARAT WEST"~ 2,
+    DISTRICT == "MELBOURNE EAST"~ 2,
+    DISTRICT == "GEELONG"~ 2,
+    TRUE ~ 1)
+  ) %>%
+  mutate(DISTRICT = str_remove_all(DISTRICT,"vote")) %>%
+  mutate(DISTRICT = str_remove_all(DISTRICT,"against")) %>%
+  mutate(DISTRICT = str_remove_all(DISTRICT,"below")) %>% 
+  mutate(PROP = EN/SEATS)
+
+district_1 %>% 
+  filter(SEATS == 2) %>% 
+  select(DISTRICT) %>% 
+  unique() %>% 
+  mutate(DISTRICT = str_to_title(DISTRICT))
+
+district_2 <- district %>%
+  mutate(DISTRICT = case_when(
+    DISTRICT == "SWAN HILL" ~ "DONALD AND SWAN HILL",
+    DISTRICT == "WANGARATTA AND RUTHERGLE" ~ "WANGARATTA AND RUTHERGLEN",
+    TRUE ~ DISTRICT)) %>%
+  filter(YEAR > 1903) %>% 
+  mutate(SEATS = 1) %>% 
+  mutate(PROP = EN/SEATS)
+
+
+all_districts <- district_1 %>% 
+  bind_rows(district_2) %>%
+  mutate(DISTRICT = case_when(
+    DISTRICT == "ALLANDALE" ~ "ALLENDALE",
+    # DISTRICT == "WANGARATTA AND RUTHERGLE" ~ "WANGARATTA AND RUTHERGLEN",
+    TRUE ~ DISTRICT)) %>% 
+  mutate(DISTRICT = str_trim(DISTRICT)) %>% 
+  add_row(DISTRICT = "SWAN HILL", EN = 8837, YEAR = 1927, SEATS = 1,  PROP = 8837) %>% 
+  bind_rows(Erol) %>% 
+  select(-CAT) %>% 
+  arrange(YEAR) %>% 
+  unique()
+
+sum1w <- all_districts %>% 
+  group_by(YEAR) %>% 
+  summarise(`Min Voters` = min(PROP), 'Ave number of Voters' = mean(PROP), `Max Voters` = max(PROP)) %>% 
+  mutate(Ratio = `Min Voters`/`Max Voters`)
+
+sum1 <- sum1w %>% 
+  pivot_longer(cols=c('Min Voters', 'Ave number of Voters','Max Voters'), names_to = "Voters", values_to = "Count") %>% 
+  rename(Year = YEAR)
+
+sum2 <- sum1w %>% 
+  select(Year = YEAR, Ratio)
+
+
+ggplot(sum1)+aes(x=Year, y=Count,group = Voters)+
+  geom_line(aes(color = Voters,linetype=Voters))+
+  theme_ben()+
+  scale_x_continuous(n.breaks = 12)+
+  scale_y_continuous(labels = scales::comma)
+
+ggplot(sum2)+aes(x=Year, y=Ratio)+
+  geom_line()+
+  geom_smooth(method = 'loess', se = FALSE)+
+  theme_ben()+
+  scale_x_continuous(n.breaks = 12)+
+  scale_y_continuous(labels = scales::comma)
+
+# Majority Needed
+majn <- all_districts %>% 
+  mutate(ENm = EN/2+1) %>% 
+  summarise(sumV = sum(EN), summ = sum(ENm))
+  
+# Majority needed
+all_districts %>% 
+  filter(YEAR == 1856) %>% 
+  arrange(EN) %>% 
+  mutate(Sum=sum(EN)) %>% 
+  mutate(id = row_number()) %>%
+  mutate(nrow = max(id)) %>% 
+  mutate(need = case_when(
+    id <= nrow/2~ 1,
+    TRUE ~ 0
+  )) %>% 
+  filter(need != 0) %>% 
+  mutate(vote = sum(EN)) %>% 
+  select(YEAR, Sum, vote) %>% 
+  unique() %>% 
+  mutate(rat = vote/Sum)
+
+z <- as.list(unique(all_districts$YEAR))
+
+
+Maj_needed <- function(x) {
+  y <- all_districts %>% 
+    filter(YEAR == x) %>% 
+    arrange(PROP) %>% 
+    mutate(Sum=sum(PROP)) %>% 
+    mutate(id = row_number()) %>%
+    mutate(nrow = max(id)) %>% 
+    mutate(need = case_when(
+      id <= nrow/2~ 1,
+      TRUE ~ 0
+    )) %>% 
+    filter(need != 0) %>%
+    mutate(n_seats = max(id)) %>% 
+    mutate(vote = sum(PROP)) %>% 
+    select(YEAR, n_seats, Sum, vote) %>% 
+    unique() %>% 
+    mutate(Prop = vote/Sum) 
+  write_rds(y, paste0("mala2/",x,".rds"))
+}
+
+
+lapply(z,Maj_needed)
+
+
+rds_combo_m <- list.files(path = "mala2/", pattern = "*.rds", full.names = TRUE ) %>%
+  map_dfr(readRDS) %>%
+  replace(is.na(.),0) 
+
+ggplot(rds_combo_m)+aes(x=YEAR, y=Prop)+
+  geom_line()+
+  theme_ben()+
+  scale_x_continuous(n.breaks = 40)+
+  geom_smooth(method = 'loess', se= FALSE, color="red")
+
+
+# Snider
+rlistc <- read_csv("rlist_coded.csv") %>% 
+  mutate(categ = case_when(
+    Category == "NAR"| Category == "RURAL"~ "Rural",
+    Category == "URBAN" ~ "Metro",
+    Category == "METRO" ~ "Urban",
+    TRUE ~ Category
+  )) %>% 
+  filter(YEAR > 1899) %>% 
+  select(-Category)
+
+all_districts2 <- all_districts %>% 
+  filter(YEAR <= 1899) %>% 
+  bind_rows(rlistc)
+
+unique(all_districts2$categ)
+unique(rlistc$categ)
+
+snide1 <- all_districts2 %>% 
+  group_by(YEAR, categ) %>% 
+  summarise(`Mean no. Voters` = mean(EN)) 
+
+ggplot(snide1) + aes(x=YEAR, y=`Mean no. Voters`)+
+  geom_line(aes(color = categ, linetype = categ))+
+  theme_ben()+
+  scale_x_continuous(n.breaks = 26)+
+  scale_y_continuous(labels = scales::comma)
+ggplot4 <- ggplotly(plot4)
+
+
+snide2 <- all_districts2 %>% 
+  group_by(YEAR) %>% 
+  summarise(c = sum(SEATS), sYear = sum(EN)) 
+
+snide3 <- all_districts2 %>%
+  group_by(YEAR, categ) %>% 
+  mutate(sseat = sum(SEATS), Svote = sum(PROP)) %>% 
+  select(YEAR, categ, sseat,Svote) %>% 
+  unique () %>% 
+  left_join(snide2, by ="YEAR") %>% 
+  mutate(pseats = sseat/c, pvoters = Svote/sYear) %>% 
+  mutate(var = abs(pseats-pvoters)) %>% 
+  group_by(YEAR) %>% 
+  summarise(MALc = sum(var)) %>% 
+  mutate(MAL = MALc/2) %>% 
+  rename(Year = YEAR) 
+
+snide4 <- all_districts2 %>%
+  group_by(YEAR, categ) %>% 
+  mutate(sseat = sum(SEATS), Svote = sum(PROP)) %>% 
+  select(YEAR, categ, sseat,Svote) %>% 
+  unique () %>% 
+  left_join(snide2, by ="YEAR") %>% 
+  mutate(pseats = sseat/c, pvoters = Svote/sYear)
+
+
+mm <- loess(MAL~Year, data = snide3)
+
+
+aloess <- as.tibble(predict(mm, snide3))
+snide4<- snide3 %>% 
+  bind_cols(aloess) %>% 
+  rename(MALs = value)
+
+
+l <- snide4 %>% 
+  filter(Year < 1960)
+
+mean(l$MAL)
+min(l$MAL)
+max(l$MAL)
+
+x21 <- rlistc %>% 
+  filter(YEAR == 1921)
+
+x43 <- rlistc %>% 
+  filter(YEAR == 1943)
+
+x55 <- rlistc %>% 
+  filter(YEAR == 1955)
+
+x55 
+
+plot5 <- ggplot(l) + aes(x=Year, y=MALs)+
+  geom_line()+
+  # geom_smooth()+
+  theme_ben()+
+  scale_x_continuous(n.breaks = 24)
+ggplot5 <- ggplotly(plot5)
+
+
+# Join GDP data
+l1 <- l %>% 
+  mutate(Year = case_when(
+    Year == 1859 ~ 1861,
+    TRUE ~ Year
+  ))
+
+vyp2cl <- read_rds("vyp2cl.rds")
+
+ml <- vyp2cl %>% 
+  left_join(l1, by = "Year") %>% 
+  fill(MAL, .direction = "down") %>% 
+  select(Year, Y = value, MAL) %>% 
+  filter(Year < 1956)
+
+m <- loess(MAL~Year, data = ml)
+
+aloess <- as.tibble(predict(m, ml))
+mls <- ml %>% 
+  bind_cols(aloess) %>% 
+  mutate(Rat = value/Y) %>% 
+  rename(Yrn = Y, Mr = MAL, Mrl = value, Mey = Rat)
+
+mls1 <- mls %>% 
+  pivot_longer(-Year, names_to = "var", values_to = "Ratio") 
+
+mls1a <- mls1 %>% 
+  filter(var != "Mrl")
+mls1b <- mls1 %>% 
+  filter(var != "Mr")
+
+  
+ggplot(mls1a)+aes(x = Year, y= Ratio) +
+  geom_line(aes(linetype=var))+
+  scale_linetype_manual(name = "Index",
+                        values=c("solid", "longdash", "dotted"),
+                        labels = c(bquote(M[ey]),bquote(M[r]),bquote(Y[rn]))) +
+  scale_x_continuous(n.breaks = 20)+
+  theme_minimal()
+
+    
+    
+ggplot(mls1b)+aes(x = Year, y= Ratio) +
+  geom_line(aes(linetype = var))+
+  scale_linetype_manual(name = "Index",
+                        values=c("solid", "longdash", "dotted"),
+                        labels = c(bquote(M[ey]),bquote(M[rl]),bquote(Y[rn]))) +
+  scale_x_continuous(n.breaks = 20)+
+  theme_ben()+
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),legend.text=element_text(size=15))
+
+
+i <- 25
+plot(1, xlab=bquote("Lake NO3 ("*mu*"mol/L): " ~.(i) ))
+
+
+mls1w <- mls1b %>% 
+  pivot_wider(names_from = var, values_from = Ratio)
+
+mls1wa <- mls1a %>% 
+  pivot_wider(names_from = var, values_from = Ratio)
